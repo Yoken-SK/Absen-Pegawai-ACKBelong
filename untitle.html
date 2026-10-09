@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Absensi Pegawai</title>
+    
+    <!-- PWA / Native App Meta Tags (MEMBUATNYA SEPERTI APLIKASI ASLI) -->
+    <meta name="theme-color" content="#2563eb">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Absensi">
+    <meta name="mobile-web-app-capable" content="yes">
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        /* Sembunyikan scrollbar dan matikan text-selection agar terasa seperti app native */
+        ::-webkit-scrollbar { display: none; }
+        body { -webkit-user-select: none; user-select: none; }
+        input { -webkit-user-select: auto; user-select: auto; }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800 font-sans antialiased">
+
+    <!-- 1. HALAMAN LOGIN & REGISTRASI -->
+    <div id="auth-view" class="min-h-screen flex items-center justify-center p-4">
+        <div class="bg-white p-8 rounded-2xl shadow-xl w-full max-w-md">
+            <div class="text-center mb-6">
+                <i class="fas fa-fingerprint text-blue-600 text-5xl mb-2"></i>
+                <h2 class="text-2xl font-bold text-gray-800" id="auth-title">Masuk ke Akun</h2>
+            </div>
+
+            <!-- Form Login -->
+            <form id="login-form" onsubmit="handleLogin(event)">
+                <input type="email" id="login-email" placeholder="Alamat Email" required class="w-full border border-gray-300 rounded-lg p-3 mb-3 focus:border-blue-500 focus:outline-none">
+                <input type="password" id="login-password" placeholder="Password" required class="w-full border border-gray-300 rounded-lg p-3 mb-4 focus:border-blue-500 focus:outline-none">
+                <button type="submit" class="w-full bg-blue-600 text-white font-bold rounded-lg p-3 shadow-md hover:bg-blue-700">MASUK</button>
+                <p class="text-center text-sm text-gray-500 mt-4">Belum punya akun? <a href="#" onclick="toggleAuthMode()" class="text-blue-600 font-bold">Daftar di sini</a></p>
+            </form>
+
+            <!-- Form Registrasi (Awalnya Disembunyikan) -->
+            <form id="register-form" onsubmit="handleRegister(event)" class="hidden">
+                <input type="text" id="reg-name" placeholder="Nama Lengkap" required class="w-full border border-gray-300 rounded-lg p-3 mb-3 focus:outline-none">
+                <input type="email" id="reg-email" placeholder="Alamat Email" required class="w-full border border-gray-300 rounded-lg p-3 mb-3 focus:outline-none">
+                <div class="mb-3">
+                    <label class="text-xs text-gray-500 ml-1">Tanggal Lahir</label>
+                    <input type="date" id="reg-dob" required class="w-full border border-gray-300 rounded-lg p-3 focus:outline-none">
+                </div>
+                <input type="password" id="reg-password" placeholder="Buat Password" required class="w-full border border-gray-300 rounded-lg p-3 mb-4 focus:outline-none">
+                <button type="submit" class="w-full bg-green-500 text-white font-bold rounded-lg p-3 shadow-md hover:bg-green-600">DAFTAR SEKARANG</button>
+                <p class="text-center text-sm text-gray-500 mt-4">Sudah punya akun? <a href="#" onclick="toggleAuthMode()" class="text-blue-600 font-bold">Masuk di sini</a></p>
+            </form>
+        </div>
+    </div>
+
+    <!-- 2. HALAMAN UTAMA APLIKASI (Disembunyikan jika belum login) -->
+    <div id="app-view" class="max-w-md mx-auto bg-white min-h-screen relative shadow-xl overflow-hidden flex-col hidden">
+        <header class="bg-blue-600 text-white p-4 shadow-md flex justify-between items-center sticky top-0 z-10">
+            <h1 class="text-lg font-bold" id="header-title">Absensi</h1>
+            <button onclick="handleLogout()" class="text-sm bg-red-500 px-3 py-1 rounded shadow text-white font-bold active:bg-red-600">Keluar</button>
+        </header>
+
+        <main class="flex-1 overflow-y-auto p-4 pb-20" id="main-content"></main>
+
+        <nav class="bg-white border-t border-gray-200 fixed bottom-0 w-full max-w-md flex justify-around p-3 shadow-lg z-10">
+            <button onclick="switchTab('absen')" class="nav-btn flex flex-col items-center text-blue-600" data-tab="absen">
+                <i class="fas fa-fingerprint text-xl mb-1"></i><span class="text-xs font-semibold">Absen</span>
+            </button>
+            <button onclick="switchTab('laporan')" class="nav-btn flex flex-col items-center text-gray-400" data-tab="laporan">
+                <i class="fas fa-chart-bar text-xl mb-1"></i><span class="text-xs font-semibold">Rekap</span>
+            </button>
+            <button onclick="switchTab('pegawai')" class="nav-btn flex flex-col items-center text-gray-400" data-tab="pegawai">
+                <i class="fas fa-users text-xl mb-1"></i><span class="text-xs font-semibold">Pegawai</span>
+            </button>
+        </nav>
+    </div>
+
+    <script>
+        // --- DATA & STATE MANAGEMENT ---
+        let users = JSON.parse(localStorage.getItem('users')) || [];
+        let attendance = JSON.parse(localStorage.getItem('attendance')) || [];
+        // currentUser langsung diambil dari memori. Ini yang membuat user TETAP LOGIN!
+        let currentUser = JSON.parse(localStorage.getItem('currentUser')) || null;
+        let isLoginMode = true;
+
+        function saveData() {
+            localStorage.setItem('users', JSON.stringify(users));
+            localStorage.setItem('attendance', JSON.stringify(attendance));
+            localStorage.setItem('currentUser', JSON.stringify(currentUser));
+        }
+
+        // --- AUTHENTICATION LOGIC ---
+        function toggleAuthMode() {
+            isLoginMode = !isLoginMode;
+            document.getElementById('login-form').classList.toggle('hidden', !isLoginMode);
+            document.getElementById('register-form').classList.toggle('hidden', isLoginMode);
+            document.getElementById('auth-title').innerText = isLoginMode ? "Masuk ke Akun" : "Daftar Pegawai";
+        }
+
+        function handleRegister(e) {
+            e.preventDefault();
+            const email = document.getElementById('reg-email').value;
+            if(users.find(u => u.email === email)) return alert("Email sudah terdaftar!");
+
+            const newUser = {
+                id: Date.now(),
+                name: document.getElementById('reg-name').value,
+                email: email,
+                dob: document.getElementById('reg-dob').value,
+                password: document.getElementById('reg-password').value, 
+                active: true
+            };
+            users.push(newUser);
+            currentUser = newUser;
+            saveData();
+            checkAuth();
+        }
+
+        function handleLogin(e) {
+            e.preventDefault();
+            const email = document.getElementById('login-email').value;
+            const pass = document.getElementById('login-password').value;
+            
+            const user = users.find(u => u.email === email && u.password === pass);
+            if (user) {
+                if(!user.active) return alert("Akun Anda telah dinonaktifkan.");
+                currentUser = user;
+                saveData(); // Simpan sesi login
+                checkAuth();
+            } else {
+                alert("Email atau password salah!");
+            }
+        }
+
+        function handleLogout() {
+            // Konfirmasi sebelum keluar agar tidak salah pencet
+            if(confirm("Yakin ingin keluar dari akun? Anda harus login ulang nantinya.")) {
+                currentUser = null;
+                saveData(); // Hapus sesi login
+                checkAuth();
+            }
+        }
+
+        function checkAuth() {
+            // Jika ada data currentUser di memori, langsung lompat ke aplikasi (Bypass Login)
+            if (currentUser) {
+                document.getElementById('auth-view').classList.add('hidden');
+                document.getElementById('app-view').classList.remove('hidden');
+                document.getElementById('app-view').classList.add('flex');
+                switchTab('absen');
+            } else {
+                document.getElementById('auth-view').classList.remove('hidden');
+                document.getElementById('app-view').classList.add('hidden');
+                document.getElementById('app-view').classList.remove('flex');
+            }
+        }
+
+        // --- CORE APP LOGIC ---
+        function getShift(time) {
+            const hour = parseInt(time.split(':')[0]);
+            if (hour >= 7 && hour < 14) return "Pagi (07.00-14.00)";
+            if (hour >= 14 && hour < 21) return "Sore (14.00-21.00)";
+            return "Luar Shift";
+        }
+
+        function getCurrentDateTime() {
+            const now = new Date();
+            const date = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
+            const time = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
+            return { date, time };
+        }
+
+        function recordAbsence(type) {
+            const { date, time } = getCurrentDateTime();
+            let recordIndex = attendance.findIndex(a => a.userId === currentUser.id && a.date === date);
+
+            if (type === 'masuk') {
+                if (recordIndex > -1) {
+                    alert(`Halo ${currentUser.name}, Anda sudah absen masuk hari ini!`);
+                } else {
+                    attendance.push({
+                        id: Date.now(),
+                        userId: currentUser.id,
+                        name: currentUser.name,
+                        date: date,
+                        timeIn: time,
+                        timeOut: null,
+                        shift: getShift(time)
+                    });
+                    alert(`✅ MASUK berhasil jam ${time}`);
+                }
+            } else {
+                if (recordIndex > -1) {
+                    if (attendance[recordIndex].timeOut) {
+                        alert(`Anda sudah absen keluar hari ini!`);
+                    } else {
+                        attendance[recordIndex].timeOut = time;
+                        alert(`👋 KELUAR berhasil jam ${time}`);
+                    }
+                } else {
+                    alert("Harap absen masuk terlebih dahulu!");
+                }
+            }
+            saveData();
+            renderAbsen();
+        }
+
+        // --- UI RENDERING ---
+        const mainContent = document.getElementById('main-content');
+        const headerTitle = document.getElementById('header-title');
+
+        function renderAbsen() {
+            headerTitle.innerText = "Sistem Absensi";
+            const { date } = getCurrentDateTime();
+            
+            const todayRecord = attendance.find(a => a.userId === currentUser.id && a.date === date);
+            const statusText = todayRecord 
+                ? (todayRecord.timeOut ? `<span class="text-green-600">Selesai Shift</span>` : `<span class="text-orange-500">Sedang Bekerja (Masuk: ${todayRecord.timeIn})</span>`) 
+                : `<span class="text-gray-500">Belum Absen Hari Ini</span>`;
+
+            mainContent.innerHTML = `
+                <div class="bg-blue-50 rounded-xl p-6 mb-6 text-center shadow-inner border border-blue-100">
+                    <p class="text-sm text-gray-500 mb-1">Halo, <strong>${currentUser.name}</strong></p>
+                    <h2 class="text-2xl font-black text-blue-700 tracking-wider mb-2">${date}</h2>
+                    <p class="text-sm font-semibold">${statusText}</p>
+                </div>
+                
+                <div class="grid grid-cols-2 gap-4 mt-8">
+                    <button onclick="recordAbsence('masuk')" class="bg-green-500 active:bg-green-600 text-white p-5 rounded-xl shadow-md flex flex-col items-center transition-transform transform active:scale-95">
+                        <i class="fas fa-sign-in-alt text-4xl mb-3"></i>
+                        <span class="font-bold text-lg">MASUK</span>
+                    </button>
+                    <button onclick="recordAbsence('keluar')" class="bg-red-500 active:bg-red-600 text-white p-5 rounded-xl shadow-md flex flex-col items-center transition-transform transform active:scale-95">
+                        <i class="fas fa-sign-out-alt text-4xl mb-3"></i>
+                        <span class="font-bold text-lg">KELUAR</span>
+                    </button>
+                </div>
+            `;
+        }
+
+        function renderLaporan() {
+            headerTitle.innerText = "Rekap Kehadiran";
+            mainContent.innerHTML = `
+                <div class="mb-4">
+                    <select id="filter-months" onchange="applyFilter()" class="w-full border-2 border-gray-300 rounded-lg p-2 bg-white">
+                        <option value="1">1 Bulan Terakhir</option>
+                        <option value="2">2 Bulan Terakhir</option>
+                        <option value="6">6 Bulan Terakhir</option>
+                    </select>
+                </div>
+                <div id="report-table" class="space-y-3"></div>
+            `;
+            applyFilter();
+        }
+
+        function applyFilter() {
+            const months = document.getElementById('filter-months').value;
+            const container = document.getElementById('report-table');
+            const cutoffDate = new Date();
+            cutoffDate.setMonth(cutoffDate.getMonth() - parseInt(months));
+
+            const filteredData = attendance
+                .filter(a => new Date(a.date) >= cutoffDate)
+                .sort((a, b) => new Date(b.date) - new Date(a.date));
+
+            if (filteredData.length === 0) {
+                container.innerHTML = `<div class="text-center p-6 text-gray-400">Belum ada data absen.</div>`;
+                return;
+            }
+
+            container.innerHTML = filteredData.map(a => `
+                <div class="bg-white border border-gray-200 rounded-lg p-3 shadow-sm flex justify-between items-center">
+                    <div>
+                        <p class="font-bold text-gray-800">${a.name}</p>
+                        <p class="text-xs text-gray-500">${a.date} • ${a.shift}</p>
+                    </div>
+                    <div class="text-right">
+                        <p class="text-sm font-bold text-green-600">IN: ${a.timeIn}</p>
+                        <p class="text-sm font-bold text-red-500">OUT: ${a.timeOut || '--:--'}</p>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function renderPegawai() {
+            headerTitle.innerText = "Daftar Pegawai Terdaftar";
+            mainContent.innerHTML = `
+                <div class="space-y-3">
+                    ${users.map(u => `
+                        <div class="bg-white border border-gray-200 rounded-lg p-3 shadow-sm flex items-center gap-3">
+                            <div class="bg-blue-100 text-blue-600 h-10 w-10 rounded-full flex items-center justify-center font-bold text-lg">
+                                ${u.name.charAt(0).toUpperCase()}
+                            </div>
+                            <div>
+                                <p class="font-bold text-gray-800">${u.name}</p>
+                                <p class="text-xs text-gray-500">${u.email}</p>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        }
+
+        function switchTab(tabName) {
+            document.querySelectorAll('.nav-btn').forEach(btn => {
+                if (btn.dataset.tab === tabName) {
+                    btn.classList.replace('text-gray-400', 'text-blue-600');
+                } else {
+                    btn.classList.replace('text-blue-600', 'text-gray-400');
+                }
+            });
+            if (tabName === 'absen') renderAbsen();
+            if (tabName === 'laporan') renderLaporan();
+            if (tabName === 'pegawai') renderPegawai();
+        }
+
+        // --- INITIALIZATION ---
+        checkAuth();
+    </script>
+</body>
+</html>
